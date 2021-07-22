@@ -2,6 +2,7 @@
 #include <base_local_planner/latched_stop_rotate_controller.h>
 #include <base_local_planner/local_planner_util.h>
 #include <base_local_planner/odometry_helper_ros.h>
+#include <bau_local_planner/bau_local_planner.h>
 #include <nav_core/base_local_planner.h>
 
 namespace bau_local_planner {
@@ -41,6 +42,7 @@ class BAUPlannerROS : public nav_core::BaseLocalPlanner {
   base_local_planner::LocalPlannerUtil planner_util_;  //!< helper class for local planning
   base_local_planner::LatchedStopRotateController latched_sr_controller_;  //!< basic motion controller
   const std::string odom_topic_;                                           //!< topic name where odometry is published
+  BAUPlanner bau_planner;                                                  //!< the actual path planner
 };
 
 }  // namespace bau_local_planner

@@ -128,7 +128,7 @@ include_directories(
 )
 
 ## Declare a C++ library
-add_library(${PROJECT_NAME} src/bau_local_planner_ros.cpp)
+add_library(${PROJECT_NAME} src/bau_local_planner_ros.cpp src/bau_local_planner.cpp)
 
 
 ## Add cmake target dependencies of the library

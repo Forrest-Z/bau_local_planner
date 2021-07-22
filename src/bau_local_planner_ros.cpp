@@ -6,7 +6,7 @@ PLUGINLIB_EXPORT_CLASS(bau_local_planner::BAUPlannerROS, nav_core::BaseLocalPlan
 
 namespace bau_local_planner {
 
-BAUPlannerROS::BAUPlannerROS() : initialised_(false), odom_topic_("/odom") {}
+BAUPlannerROS::BAUPlannerROS() : initialised_(false), odom_topic_("/odom"), bau_planner(&planner_util_) {}
 
 void BAUPlannerROS::initialize(std::string name, tf2_ros::Buffer *tf, costmap_2d::Costmap2DROS *costmap) {
   ROS_INFO("Attempting to initialize BAUPlanner.");
@@ -28,8 +28,11 @@ bool BAUPlannerROS::setPlan(const std::vector<geometry_msgs::PoseStamped> &orig_
     ROS_ERROR("BAUPlanner is not yet initialized.");
     return false;
   }
+  ROS_INFO("Received new global plan.");
+  // reset this controller as it is stateful, and the goal now may have changed
+  latched_sr_controller_.resetLatching();
 
-  return true;
+  return planner_util_.setPlan(orig_global_plan);
 }
 
 bool BAUPlannerROS::isGoalReached() {
@@ -58,10 +61,27 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
   // first get the global plan translated into our local frame
   std::vector<geometry_msgs::PoseStamped> local_plan;
   if (!planner_util_.getLocalPlan(cur_robot_pose_, local_plan)) {
-    ROS_ERROR("Failed to get current plan.");
+    ROS_ERROR("Failed to get current local plan. Planning failure.");
     return false;
+  } else if (local_plan.empty()) {
+    ROS_ERROR("Local plan is empty. Planning failure.");
+    return false;
+  } else {
+    ROS_INFO("Sucessfully received a new local plan.");
   }
-  // TODO: update plan here
+  // set up the planner with the new goal information we just received
+  bau_planner.prePlan(cur_robot_pose_, costmap_->getRobotFootprint(), local_plan);
+
+  if (latched_sr_controller_.isPositionReached(&planner_util_, cur_robot_pose_)) {
+    // reached goal here
+  } else {
+    // not reached goal here
+    geometry_msgs::PoseStamped robot_vel;
+    odom_helper_.getRobotVel(robot_vel);
+    geometry_msgs::PoseStamped drive_cmds;
+    drive_cmds.header.frame_id = costmap_->getBaseFrameID();
+    base_local_planner::Trajectory new_path = bau_planner.plan(cur_robot_pose_, robot_vel, drive_cmds);
+  }
 
   return true;
 }
