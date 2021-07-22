@@ -76,7 +76,7 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
     // reach here if the goal has been overshot
     // in which case we want to stop, and potentially rotate towards the goal if
     // we are not oriented yet
-
+    ROS_ERROR("YIKES");
   } else {
     geometry_msgs::PoseStamped robot_vel;
     odom_helper_.getRobotVel(robot_vel);
