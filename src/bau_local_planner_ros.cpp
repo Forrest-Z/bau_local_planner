@@ -73,14 +73,25 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
   bau_planner.prePlan(cur_robot_pose_, costmap_->getRobotFootprint(), local_plan);
 
   if (latched_sr_controller_.isPositionReached(&planner_util_, cur_robot_pose_)) {
-    // reached goal here
+    // reach here if the goal has been overshot
+    // in which case we want to stop, and potentially rotate towards the goal if
+    // we are not oriented yet
+
   } else {
-    // not reached goal here
     geometry_msgs::PoseStamped robot_vel;
     odom_helper_.getRobotVel(robot_vel);
     geometry_msgs::PoseStamped drive_cmds;
     drive_cmds.header.frame_id = costmap_->getBaseFrameID();
-    base_local_planner::Trajectory new_path = bau_planner.plan(cur_robot_pose_, robot_vel, drive_cmds);
+    // try to find a new trajectory using the planner
+    base_local_planner::Trajectory new_trajectory = bau_planner.plan(cur_robot_pose_, robot_vel, drive_cmds);
+    // pass the resulting trajectory on (may be 0, in the case of planning failure)
+    cmd_vel.linear.x = drive_cmds.pose.position.x;
+    cmd_vel.linear.y = drive_cmds.pose.position.y;
+    cmd_vel.angular.z = tf2::getYaw(drive_cmds.pose.orientation);
+    if (new_trajectory.cost_ < 0) {
+      ROS_ERROR("Unable to find a trajectory, stopping robot.");
+      return false;
+    }
   }
 
   return true;

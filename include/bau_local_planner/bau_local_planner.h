@@ -27,7 +27,7 @@ class BAUPlanner {
 
   base_local_planner::Trajectory plan(const geometry_msgs::PoseStamped &robot_pose,
                                       const geometry_msgs::PoseStamped &robot_vel,
-                                      geometry_msgs::PoseStamped &drive_vel);
+                                      geometry_msgs::PoseStamped &drive_cmds);
 
  private:
   base_local_planner::LocalPlannerUtil *planner_util_;

@@ -1,0 +1,6 @@
+# parameters used to configur the trajectory generator
+
+sim_time: 2.0   # how far ahead in time to generate trajectories
+sim_granularity: 0.01   # granularity of obstacle check in metres
+angular_sim_granularity:  0.2 # as above, but angular granularity for obstacle check
+use_dwa: true
