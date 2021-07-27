@@ -8,7 +8,7 @@ namespace bau_local_planner {
 
 BAUPlannerROS::BAUPlannerROS() : initialised_(false), odom_topic_("/odom"), bau_planner(&planner_util_) {}
 
-void BAUPlannerROS::initialize(std::string name, tf2_ros::Buffer *tf, costmap_2d::Costmap2DROS *costmap) {
+void BAUPlannerROS::initialize(const std::string name, tf2_ros::Buffer *tf, costmap_2d::Costmap2DROS *costmap) {
   ROS_INFO("Attempting to initialize BAUPlanner.");
   if (isInitialized()) {
     ROS_ERROR("BAUPlanner already initialized.");
@@ -19,7 +19,6 @@ void BAUPlannerROS::initialize(std::string name, tf2_ros::Buffer *tf, costmap_2d
   costmap_ = costmap;
   costmap_->getRobotPose(cur_robot_pose_);
   odom_helper_.setOdomTopic(odom_topic_);
-
   initialised_ = true;
 }
 
@@ -69,21 +68,17 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
   } else {
     ROS_INFO("Sucessfully received a new local plan.");
   }
-  // set up the planner with the new goal information we just received
-  bau_planner.prePlan(cur_robot_pose_, costmap_->getRobotFootprint(), local_plan);
-
   if (latched_sr_controller_.isPositionReached(&planner_util_, cur_robot_pose_)) {
-    // reach here if the goal has been overshot
-    // in which case we want to stop, and potentially rotate towards the goal if
-    // we are not oriented yet
-    ROS_ERROR("YIKES");
+    // reach here if the goal has been overshot, so just stop
+    return false;
   } else {
-    geometry_msgs::PoseStamped robot_vel;
-    odom_helper_.getRobotVel(robot_vel);
     geometry_msgs::PoseStamped drive_cmds;
     drive_cmds.header.frame_id = costmap_->getBaseFrameID();
+    geometry_msgs::PoseStamped robot_vel;
+    odom_helper_.getRobotVel(robot_vel);
     // try to find a new trajectory using the planner
-    base_local_planner::Trajectory new_trajectory = bau_planner.plan(cur_robot_pose_, robot_vel, drive_cmds);
+    base_local_planner::Trajectory new_trajectory =
+        bau_planner.plan(cur_robot_pose_, robot_vel, costmap_->getRobotFootprint(), local_plan, drive_cmds);
     // pass the resulting trajectory on (may be 0, in the case of planning failure)
     cmd_vel.linear.x = drive_cmds.pose.position.x;
     cmd_vel.linear.y = drive_cmds.pose.position.y;

@@ -81,7 +81,7 @@
 
   <!-- The export tag contains other, unspecified, tags -->
   <export>
-      <!-- Other tools can request additional information be placed here -->
+      <!-- Used to export the bau_local_planner::BAUPlannerROS class as a plugin for the nav system  -->
       <nav_core plugin="${prefix}/blp_plugin.xml" />
   </export>
 </package>
