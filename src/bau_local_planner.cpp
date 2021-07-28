@@ -23,7 +23,7 @@ bool BAUPlanner::initialize() {
   // first set up the cost functions that we'll use to evaluate generated trajectories
   setUpCostFunctions();
   // second set up the generators that will give us candidate trajectories to evaluate
-  trajectory_generator_.setParameters(1.0f, 0.1f, 0.1f, true, 0.5f);
+  trajectory_generator_.setParameters(1.7f, 0.025f, 0.1f, true, 0.05f);
   std::vector<TrajectorySampleGenerator *> trajectory_generators_;
   trajectory_generators_.push_back(&trajectory_generator_);
   // finally pass them all into the evaluator
@@ -57,8 +57,9 @@ void BAUPlanner::setUpCostFunctions() {
   goal_facing_costs_.setXShift(x_shift_distance_);
   alignment_costs_.setXShift(x_shift_distance_);
 
-  obstacle_costs_.setSumScores(true);
   oscillation_costs_.resetOscillationFlags();
+  obstacle_costs_.setSumScores(true);
+  oscillation_costs_.setOscillationResetDist(0.05, 0.2);
 
   // set up the ones we have active for this planning tick
   // TODO: could add the option to enable/disable certain cost functions at runtime here
