@@ -23,7 +23,7 @@ bool BAUPlanner::initialize() {
   // first set up the cost functions that we'll use to evaluate generated trajectories
   setUpCostFunctions();
   // second set up the generators that will give us candidate trajectories to evaluate
-  trajectory_generator_.setParameters(2.0f, 0.1f, 0.1f, true, 0.05f);
+  trajectory_generator_.setParameters(1.0f, 0.1f, 0.1f, true, 0.5f);
   std::vector<TrajectorySampleGenerator *> trajectory_generators_;
   trajectory_generators_.push_back(&trajectory_generator_);
   // finally pass them all into the evaluator
