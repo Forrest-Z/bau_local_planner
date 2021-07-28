@@ -8,6 +8,7 @@ project(bau_local_planner)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  base_local_planner
   costmap_2d
   geometry_msgs
   nav_core
@@ -112,7 +113,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES bau_local_planner
-  CATKIN_DEPENDS costmap_2d geometry_msgs nav_core nav_msgs pluginlib roscpp std_msgs tf2 tf2_geometry_msgs tf2_ros
+  CATKIN_DEPENDS base_local_planner costmap_2d geometry_msgs nav_core nav_msgs pluginlib roscpp std_msgs tf2 tf2_geometry_msgs tf2_ros
 #  DEPENDS system_lib
 )
 

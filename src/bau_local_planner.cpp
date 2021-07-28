@@ -11,10 +11,10 @@ BAUPlanner::BAUPlanner(base_local_planner::LocalPlannerUtil *planner_util)
       alignment_costs_(planner_util->getCostmap()),
       path_scale_bias_(0.7f),
       goal_scale_bias_(0.8f),
-      obstacle_scale_bias_(0.1f),
+      obstacle_scale_bias_(0.01f),
       twirling_scale_bias_(0.05f),
       x_shift_distance_(0.2),  // metres
-      num_sampled_trajectories_(5) {
+      num_sampled_trajectories_(10) {
   initialize();
 }
 
@@ -23,13 +23,15 @@ bool BAUPlanner::initialize() {
   // first set up the cost functions that we'll use to evaluate generated trajectories
   setUpCostFunctions();
   // second set up the generators that will give us candidate trajectories to evaluate
-  trajectory_generator_.setParameters(2.0f, 0.01f, 0.2f, true, 0.05f);
+  trajectory_generator_.setParameters(2.0f, 0.1f, 0.1f, true, 0.05f);
   std::vector<TrajectorySampleGenerator *> trajectory_generators_;
   trajectory_generators_.push_back(&trajectory_generator_);
   // finally pass them all into the evaluator
   scored_sampling_planner_ = SimpleScoredSamplingPlanner(trajectory_generators_, cost_functions_);
   return true;
 }
+
+bool BAUPlanner::validate(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vector3f vel_samples) { return true; }
 
 void BAUPlanner::setUpCostFunctions() {
   // empty the current set of cost functions, in case we've toggled some at runtime
@@ -43,6 +45,7 @@ void BAUPlanner::setUpCostFunctions() {
   goal_costs_.setScale(goal_dist_bias);
   goal_facing_costs_.setScale(goal_dist_bias);
   obstacle_costs_.setScale(obstacle_scale_bias_);
+  // obstacle_costs_.setParams(0.22, 0.2, 0.25);
   twirling_costs_.setScale(twirling_scale_bias_);
 
   goal_facing_costs_.setStopOnFailure(false);
@@ -57,11 +60,13 @@ void BAUPlanner::setUpCostFunctions() {
 
   // set up the ones we have active for this planning tick
   // TODO: could add the option to enable/disable certain cost functions at runtime here
-  cost_functions_.push_back(&oscillation_costs_);
-  cost_functions_.push_back(&obstacle_costs_);
-  cost_functions_.push_back(&twirling_costs_);
+  //  cost_functions_.push_back(&oscillation_costs_);
+  // cost_functions_.push_back(&obstacle_costs_);
+  // cost_functions_.push_back(&twirling_costs_);
   cost_functions_.push_back(&path_costs_);
-  cost_functions_.push_back(&alignment_costs_);
+  cost_functions_.push_back(&goal_costs_);
+  // cost_functions_.push_back(&goal_facing_costs_);
+  // cost_functions_.push_back(&alignment_costs_);
 }
 
 base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped &robot_pose,
@@ -102,11 +107,15 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
   // run trajectory search,
   // TODO: could pass a container rather than NULL to retreive all candidate trajectories for visualisation, for now
   // just discard them
-  scored_sampling_planner_.findBestTrajectory(result, NULL);
+  std::vector<base_local_planner::Trajectory> all_explored;
+  scored_sampling_planner_.findBestTrajectory(result, &all_explored);
+  ROS_INFO("explored %d trajectories", (int)all_explored.size());
+  ROS_INFO("final result cost: %f", result.cost_);
 
   // if the cost is < 0 (set above to -1) the generator didn't find a usable trajectory
   // so the best thing to do is stop the robot, so report back 0 velocities in all dimensions
   if (result.cost_ < 0) {
+    ROS_ERROR("zeroing cmd vel!!");
     cmd_vel.pose.position.x = 0;
     cmd_vel.pose.position.y = 0;
     cmd_vel.pose.position.z = 0;
@@ -117,6 +126,9 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
   } else {
     // else, we did find a usable trajectory, so we pass this up so it can be
     // sent on to the controller
+    ROS_INFO("final result xv: %f", result.xv_);
+    ROS_INFO("final result yv: %f", result.yv_);
+    ROS_INFO("final result rv: %f", result.thetav_);
     cmd_vel.pose.position.x = result.xv_;
     cmd_vel.pose.position.y = result.yv_;
     cmd_vel.pose.position.z = 0.0;  // not used, but just so every value is initialised

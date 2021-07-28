@@ -31,6 +31,8 @@ class BAUPlanner {
    */
   bool initialize();
 
+  bool validate(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vector3f vel_samples);
+
   /**
    * @brief Sets up the group of cost functions that will be used to evaluate
    *        generated trajectories.

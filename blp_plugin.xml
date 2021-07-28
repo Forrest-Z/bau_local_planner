@@ -1,4 +1,3 @@
-
 <library path="lib/libbau_local_planner">
   <class name="bau_local_planner/BAUPlannerROS" type="bau_local_planner::BAUPlannerROS" base_class_type="nav_core::BaseLocalPlanner">
     <description>

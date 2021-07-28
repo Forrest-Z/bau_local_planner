@@ -5,6 +5,8 @@
 #include <bau_local_planner/bau_local_planner.h>
 #include <nav_core/base_local_planner.h>
 
+#include "std_msgs/Bool.h"
+
 namespace bau_local_planner {
 /**
  * @brief The BAUPlannerROS class is the ROS-facing interface to the core planner,
@@ -30,7 +32,7 @@ class BAUPlannerROS : public nav_core::BaseLocalPlanner {
   /**
    * @brief Destructor for the ROS wrapper for the BAU local planner.
    */
-  ~BAUPlannerROS();
+  ~BAUPlannerROS() {}
 
   /**
    * @brief Handles calling and sending the results of the local planner to the control system.
@@ -57,16 +59,25 @@ class BAUPlannerROS : public nav_core::BaseLocalPlanner {
    */
   bool setPlan(const std::vector<geometry_msgs::PoseStamped> &orig_global_plan);
 
+  void stuckCheckCallback(const ros::TimerEvent &);
+
  private:
-  bool initialised_;                                   //!< set to true when the planner has completed initialisation
-  costmap_2d::Costmap2DROS *costmap_;                  //!< costmap from nav system
-  tf2_ros::Buffer *tf_;                                //!< tf buffer for transforming between map frames
-  geometry_msgs::PoseStamped cur_robot_pose_;          //!< current pose of our robot according to nav system
-  base_local_planner::OdometryHelperRos odom_helper_;  //!< helper class for odom data
-  base_local_planner::LocalPlannerUtil planner_util_;  //!< helper class for local planning
+  bool initialised_;                            //!< set to true when the planner has completed initialisation
+  costmap_2d::Costmap2DROS *costmap_;           //!< costmap from nav system
+  tf2_ros::Buffer *tf_;                         //!< tf buffer for transforming between map frames
+  geometry_msgs::PoseStamped cur_robot_pose_;   //!< current pose of our robot according to nav system
+  geometry_msgs::PoseStamped last_robot_pose_;  //!< last robot pose, used by stuck check
+
+  base_local_planner::OdometryHelperRos odom_helper_;                      //!< helper class for odom data
+  base_local_planner::LocalPlannerUtil planner_util_;                      //!< helper class for local planning
   base_local_planner::LatchedStopRotateController latched_sr_controller_;  //!< basic motion controller
-  const std::string odom_topic_;                                           //!< topic name where odometry is published
-  BAUPlanner bau_planner;                                                  //!< the actual core path planner
+  const std::string stuck_topic_;            //!< topic to publish to if we think the robot is stuck
+  const std::string odom_topic_;             //!< topic name where odometry is published
+  std::shared_ptr<BAUPlanner> bau_planner_;  //!< the actual core path planner
+  ros::Publisher robot_stuck_publisher_;     //!< publisher for the stuck message
+  bool has_plan_;
+  ros::Timer stuck_check_timer_;  //!< controls when we check to see if the robot is stuck
+  float stuck_dist_threshold_;
 };
 
 }  // namespace bau_local_planner
