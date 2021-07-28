@@ -9,9 +9,9 @@ BAUPlanner::BAUPlanner(base_local_planner::LocalPlannerUtil *planner_util)
       goal_costs_(planner_util->getCostmap(), 0.0, 0.0, true),         // no xshift or yshift, refer to the local goal
       goal_facing_costs_(planner_util->getCostmap(), 0.0, 0.0, true),  // same as above
       alignment_costs_(planner_util->getCostmap()),
-      path_scale_bias_(0.7f),
-      goal_scale_bias_(0.8f),
-      obstacle_scale_bias_(0.01f),
+      path_scale_bias_(32.0),
+      goal_scale_bias_(20.0),
+      obstacle_scale_bias_(0.02f),
       twirling_scale_bias_(0.05f),
       x_shift_distance_(0.2),  // metres
       num_sampled_trajectories_(10) {
@@ -38,6 +38,8 @@ void BAUPlanner::setUpCostFunctions() {
   cost_functions_.clear();
   float path_dist_bias = planner_util_->getCostmap()->getResolution() * path_scale_bias_;
   float goal_dist_bias = planner_util_->getCostmap()->getResolution() * goal_scale_bias_;
+  ROS_INFO("path scale: %f", path_dist_bias);
+  ROS_INFO("goal scale: %f", goal_dist_bias);
 
   // set up the biases, i.e. how close we
   path_costs_.setScale(path_dist_bias);
@@ -45,7 +47,7 @@ void BAUPlanner::setUpCostFunctions() {
   goal_costs_.setScale(goal_dist_bias);
   goal_facing_costs_.setScale(goal_dist_bias);
   obstacle_costs_.setScale(obstacle_scale_bias_);
-  // obstacle_costs_.setParams(0.22, 0.2, 0.25);
+  obstacle_costs_.setParams(0.22, 0.2, 0.25);
   twirling_costs_.setScale(twirling_scale_bias_);
 
   goal_facing_costs_.setStopOnFailure(false);
@@ -60,13 +62,13 @@ void BAUPlanner::setUpCostFunctions() {
 
   // set up the ones we have active for this planning tick
   // TODO: could add the option to enable/disable certain cost functions at runtime here
-  //  cost_functions_.push_back(&oscillation_costs_);
-  // cost_functions_.push_back(&obstacle_costs_);
-  // cost_functions_.push_back(&twirling_costs_);
+  cost_functions_.push_back(&oscillation_costs_);
+  cost_functions_.push_back(&obstacle_costs_);
+  //  cost_functions_.push_back(&twirling_costs_);
   cost_functions_.push_back(&path_costs_);
   cost_functions_.push_back(&goal_costs_);
-  // cost_functions_.push_back(&goal_facing_costs_);
-  // cost_functions_.push_back(&alignment_costs_);
+  cost_functions_.push_back(&goal_facing_costs_);
+  cost_functions_.push_back(&alignment_costs_);
 }
 
 base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped &robot_pose,
