@@ -100,13 +100,28 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
   cur_plan_.clear();
   // our new plan is the plan we've just received
   cur_plan_ = local_plan;
-
-  // set up our cost functions with any new data that came in
+  // new plan might have a new end goal, so we need to set up our cost functions with any new data that came in
   obstacle_costs_.setFootprint(robot_footprint);
   path_costs_.setTargetPoses(cur_plan_);
   goal_costs_.setTargetPoses(cur_plan_);
   alignment_costs_.setTargetPoses(cur_plan_);
-  goal_facing_costs_.setTargetPoses(cur_plan_);
+
+  geometry_msgs::PoseStamped goal_pose = cur_plan_.back();
+  Eigen::Vector3f pos(robot_pose.pose.position.x, robot_pose.pose.position.y, tf2::getYaw(robot_pose.pose.orientation));
+  std::vector<geometry_msgs::PoseStamped> front_cur_plan = cur_plan_;
+
+  // this idea/these next 4 lines of code shamelessly copied from the auckbot local planner:
+  // https://github.com/ct2034/auckbot/tree/master/edwa_local_planner
+  // the idea being to ensure that the point defined by the x_shift_distance_ is correctly oriented with
+  // the current goal, rather than being a static offset of the robot's x-position
+  // if we don't do this, movement is super unstable and weird, as the x_shift_distance_ will often
+  // face in the wrong direction, and pull the robot away from the goal!
+  double angle_to_goal = atan2(goal_pose.pose.position.y - pos[1], goal_pose.pose.position.x - pos[0]);
+  front_cur_plan.back().pose.position.x =
+      front_cur_plan.back().pose.position.x + x_shift_distance_ * cos(angle_to_goal);
+  front_cur_plan.back().pose.position.y =
+      front_cur_plan.back().pose.position.y + x_shift_distance_ * sin(angle_to_goal);
+  goal_facing_costs_.setTargetPoses(front_cur_plan);
 
   // begin planning loop here -- first initialise the trajectory generator
   // requires everything in Eigen format for some reason ¯\_(ツ)_/¯
