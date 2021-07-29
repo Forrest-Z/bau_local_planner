@@ -8,7 +8,6 @@
 #include <base_local_planner/map_grid_cost_function.h>
 #include <base_local_planner/obstacle_cost_function.h>
 #include <base_local_planner/oscillation_cost_function.h>
-#include <base_local_planner/twirling_cost_function.h>
 #include <tf2/utils.h>
 
 namespace bau_local_planner {
@@ -28,9 +27,22 @@ class BAUPlanner {
   /**
    * @brief Initialisation procedure for the local planner, sets up trajectory,
    *        generators and scoring system.
+   * @returns true if the initialisation procedure was successful, false if not
    */
   bool initialize();
 
+  /**
+   * @brief Used only as a lambda by systems outside this class that may wish to make
+   *        use of the output from one or more cost functions to evaluate trajectories
+   *        they have generated independently. For now this is used in our call to
+   *        LatchedStopRotateController::computeVelocityCommandsStopRotate
+   *        which calls this function in LatchedStopRotateController::stopWithAccLimits
+   * @param pos - robot pose
+   * @param vel - robot velocity
+   * @param num_samples - num samples in each dimension to take in Eigen format
+   * @returns true if the proposed trajectory is valid with respect to our cost functions
+   *          false if not
+   */
   bool validate(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vector3f vel_samples);
 
   /**
@@ -67,17 +79,15 @@ class BAUPlanner {
   base_local_planner::OscillationCostFunction
       oscillation_costs_;  //!< penalises trajectories that cause rotational oscillations
   base_local_planner::ObstacleCostFunction
-      obstacle_costs_;  //!< trajectories where the robot footprint would cross into an obstacle
+      obstacle_costs_;  //!< penalises trajectories where the robot footprint would cross into an obstacle
   base_local_planner::MapGridCostFunction path_costs_;  //!< penalises trajectories that stray far from the global path
   base_local_planner::MapGridCostFunction goal_costs_;  //!< penalises trajectories that stray far from the goal
   base_local_planner::MapGridCostFunction
       goal_facing_costs_;  //!< penalises trajectories that stray far from the global path
-  base_local_planner::MapGridCostFunction alignment_costs_;
-  base_local_planner::TwirlingCostFunction twirling_costs_;  //!< penalises trajectories requiring rotational velocities
+  base_local_planner::MapGridCostFunction alignment_costs_;  //!< penalises trajectories not aligned with global path
   const float path_scale_bias_;                              //!< relative importance of the path cost function
   const float goal_scale_bias_;                              //!< relative importance of the goal cost function
   const float obstacle_scale_bias_;                          //!< relative importance of the obstacle cost function
-  const float twirling_scale_bias_;                          //!< relative importance of the twirling cost function
   const float x_shift_distance_;                      //!< distance, in metres, to look ahead of current robot position
   const int num_sampled_trajectories_;                //!< num of candidate trajectories to generate in each dimension
   std::vector<geometry_msgs::PoseStamped> cur_plan_;  //!< the current global plan translated to a local frame

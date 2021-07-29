@@ -59,25 +59,32 @@ class BAUPlannerROS : public nav_core::BaseLocalPlanner {
    */
   bool setPlan(const std::vector<geometry_msgs::PoseStamped> &orig_global_plan);
 
+  /**
+   * @brief A really basic, bare-bones check to see if the robot is stuck. This
+   *        callback is used by the ros::Timer stuck_check_timer_, which periodically checks
+   *        to see if the robot has moved further than stuck_dist_threshold_ from its last
+   *        position. If it hasn't, and it still has a plan it is trying to follow,
+   *        we regard that it's probably stuck.
+   */
   void stuckCheckCallback(const ros::TimerEvent &);
 
  private:
-  bool initialised_;                            //!< set to true when the planner has completed initialisation
-  costmap_2d::Costmap2DROS *costmap_;           //!< costmap from nav system
-  tf2_ros::Buffer *tf_;                         //!< tf buffer for transforming between map frames
-  geometry_msgs::PoseStamped cur_robot_pose_;   //!< current pose of our robot according to nav system
-  geometry_msgs::PoseStamped last_robot_pose_;  //!< last robot pose, used by stuck check
-
-  base_local_planner::OdometryHelperRos odom_helper_;                      //!< helper class for odom data
-  base_local_planner::LocalPlannerUtil planner_util_;                      //!< helper class for local planning
+  bool initialised_;                                   //!< set to true when the planner has completed initialisation
+  costmap_2d::Costmap2DROS *costmap_;                  //!< costmap from nav system
+  tf2_ros::Buffer *tf_;                                //!< tf buffer for transforming between map frames
+  geometry_msgs::PoseStamped cur_robot_pose_;          //!< current pose of our robot according to nav system
+  geometry_msgs::PoseStamped last_robot_pose_;         //!< last robot pose, used by stuck check
+  base_local_planner::OdometryHelperRos odom_helper_;  //!< helper class for odom data
+  base_local_planner::LocalPlannerUtil planner_util_;  //!< helper class for local planning
   base_local_planner::LatchedStopRotateController latched_sr_controller_;  //!< basic motion controller
   const std::string stuck_topic_;            //!< topic to publish to if we think the robot is stuck
   const std::string odom_topic_;             //!< topic name where odometry is published
   std::shared_ptr<BAUPlanner> bau_planner_;  //!< the actual core path planner
   ros::Publisher robot_stuck_publisher_;     //!< publisher for the stuck message
-  bool has_plan_;
-  ros::Timer stuck_check_timer_;  //!< controls when we check to see if the robot is stuck
-  float stuck_dist_threshold_;
+  bool has_plan_;                            //!< whether the robot is following a plan from our planner or not
+  ros::Timer stuck_check_timer_;             //!< controls when we check to see if the robot is stuck
+  float stuck_dist_threshold_;  //!< how far the robot has to have moved since the last check to consider it not stuck,
+                                //!< in metres.
 };
 
 }  // namespace bau_local_planner

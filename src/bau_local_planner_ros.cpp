@@ -32,19 +32,19 @@ void BAUPlannerROS::initialize(const std::string name, tf2_ros::Buffer *tf, cost
   base_local_planner::LocalPlannerLimits limits;
   limits.max_vel_trans = 0.22;
   limits.min_vel_trans = 0.11;
-  limits.max_vel_x = 0.25;
-  limits.min_vel_x = -0.25;
+  limits.max_vel_x = 0.22;
+  limits.min_vel_x = -0.22;
   limits.max_vel_y = 0.0;
   limits.min_vel_y = 0.0;
-  limits.max_vel_theta = 3.0;
-  limits.min_vel_theta = 1.5;
+  limits.max_vel_theta = 2.75;
+  limits.min_vel_theta = 1.37;
   limits.acc_lim_x = 2.5;
   limits.acc_lim_y = 0.0;
   limits.acc_lim_theta = 3.2;
   limits.acc_lim_trans = 0.0;
   limits.xy_goal_tolerance = 0.05;
-  limits.yaw_goal_tolerance = 0.15;
-  // limits.prune_plan = config.prune_plan;
+  limits.yaw_goal_tolerance = 0.17;
+  limits.prune_plan = true;
   limits.trans_stopped_vel = 10.0;
   limits.theta_stopped_vel = 10.0;
   planner_util_.reconfigureCB(limits, false);
@@ -62,19 +62,27 @@ void BAUPlannerROS::stuckCheckCallback(const ros::TimerEvent &) {
     ROS_ERROR("Unable to get current robot pose.");
     return;
   }
+  std_msgs::Bool msg;
+  msg.data = false;
+  // if the robot isn't following a plan, assume it isn't stuck
   if (!has_plan_) {
+    robot_stuck_publisher_.publish(msg);
     return;
   }
+
+  // here we just check the euclidian distance between the last known pose and the
+  // current pose
   float xd = cur_robot_pose_.pose.position.x - last_robot_pose_.pose.position.x;
   float yd = cur_robot_pose_.pose.position.y - last_robot_pose_.pose.position.y;
   float dist = sqrt(xd * xd + yd * yd);
-  ROS_INFO("DIST FROM LAST POSE, %f", dist);
+  // TODO: should also add orientation check, as we may be rotating towards a goal in-place
+  ROS_INFO("Robot has traveled %fm since last check.", dist);
   if (dist < stuck_dist_threshold_) {
-    ROS_INFO("ROBOT STUCK");
-  } else {
-    ROS_INFO("ROBOT FREE");
+    ROS_INFO("Robot is likely stuck.");
+    msg.data = true;
   }
-
+  robot_stuck_publisher_.publish(msg);
+  // next time, compare to the current pose
   last_robot_pose_ = cur_robot_pose_;
 }
 
@@ -100,9 +108,10 @@ bool BAUPlannerROS::isGoalReached() {
     ROS_ERROR("Unable to get current robot pose.");
     return false;
   }
-  // if so, pass it on to the motion controller
+  // if so, pass it on to the motion controller and see if we're at the desired x,y,θ
   if (latched_sr_controller_.isGoalReached(&planner_util_, odom_helper_, cur_robot_pose_)) {
     ROS_INFO("Goal has been reached.");
+    has_plan_ = false;
     return true;
   }
   return false;
@@ -125,12 +134,13 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
     ROS_INFO("Sucessfully received a new plan.");
   }
   if (latched_sr_controller_.isPositionReached(&planner_util_, cur_robot_pose_)) {
-    ROS_INFO("sendingto controller");
-    // reach here if the goal has been overshot, so just stop and rotate
+    // reach here if the x,y pos of the goal has been reached, but we still need to rotate
+    // some in order to orient with it
     bool latched_result = latched_sr_controller_.computeVelocityCommandsStopRotate(
         cmd_vel, planner_util_.getCurrentLimits().getAccLimits(),
-        0.05,  // ??
-        &planner_util_, odom_helper_, cur_robot_pose_, boost::bind(&BAUPlanner::validate, bau_planner_, _1, _2, _3));
+        0.05,  // same val as in trajectory_generator_.setParameters call in BAUPlanner class
+        &planner_util_, odom_helper_, cur_robot_pose_,
+        boost::bind(&BAUPlanner::validate, bau_planner_, _1, _2, _3));  // yuck, boost
     if (latched_result) {
       ROS_INFO("Rotating towards goal");
     } else {
@@ -138,7 +148,6 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
     }
     return latched_result;
   } else {
-    ROS_INFO("OK I'm going to plan");
     geometry_msgs::PoseStamped drive_cmds;
     drive_cmds.header.frame_id = costmap_->getBaseFrameID();
     geometry_msgs::PoseStamped robot_vel;
@@ -150,9 +159,9 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
     // pass the resulting trajectory on (may be 0, in the case of planning failure)
     cmd_vel.linear.x = drive_cmds.pose.position.x;
     cmd_vel.linear.y = drive_cmds.pose.position.y;
+    cmd_vel.angular.z = tf2::getYaw(drive_cmds.pose.orientation);
     ROS_INFO("linear x vel %f", cmd_vel.linear.x);
     ROS_INFO("linear y vel %f", cmd_vel.linear.y);
-    cmd_vel.angular.z = tf2::getYaw(drive_cmds.pose.orientation);
     ROS_INFO("angular vel %f", cmd_vel.angular.z);
     if (new_trajectory.cost_ < 0) {
       ROS_ERROR("Unable to find a trajectory, stopping robot.");
@@ -160,10 +169,10 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
       return false;
     } else {
       has_plan_ = true;
+      return true;
     }
   }
-
-  return true;
+  return true;  // compiler satisfaction
 }
 
 bool BAUPlannerROS::isInitialized() { return initialised_; }
