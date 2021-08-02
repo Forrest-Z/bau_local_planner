@@ -11,9 +11,9 @@ BAUPlanner::BAUPlanner(base_local_planner::LocalPlannerUtil *planner_util)
       alignment_costs_(planner_util->getCostmap()),
       path_scale_bias_(32.0),
       goal_scale_bias_(20.0),
-      obstacle_scale_bias_(0.01f),
+      obstacle_scale_bias_(0.01),
       x_shift_distance_(0.2),  // metres
-      num_sampled_trajectories_(20) {
+      num_sampled_trajectories_(5) {
   initialize();
 }
 
@@ -21,9 +21,9 @@ bool BAUPlanner::initialize() {
   using namespace base_local_planner;
   // first set up the cost functions that we'll use to evaluate generated trajectories
   setUpCostFunctions();
-  // second set up the generators that will give us candidate trajectories to evaluate
-  trajectory_generator_.setParameters(1.7f, 0.025f, 0.1f, true,
-                                      0.05f);  // performance is very sensitive to these params
+  // second set up the generators that will give us candoscillation_reset_distidate trajectories to evaluate
+  trajectory_generator_.setParameters(1.5f, 0.025f, 0.1f, true,
+                                      0.1f);  // performance is very sensitive to these params
   std::vector<TrajectorySampleGenerator *> trajectory_generators_;
   // TODO: We can add more here if needed
   trajectory_generators_.push_back(&trajectory_generator_);
@@ -39,9 +39,7 @@ bool BAUPlanner::validate(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vecto
   // we only wound up using one trajectory generator, so just pull it out here and initialise it
   // with all the above information
   base_local_planner::LocalPlannerLimits limits = planner_util_->getCurrentLimits();
-  trajectory_generator_.initialise(
-      pos, vel, goal, &limits,
-      Eigen::Vector3f(num_sampled_trajectories_, num_sampled_trajectories_, num_sampled_trajectories_));
+  trajectory_generator_.initialise(pos, vel, goal, &limits, Eigen::Vector3f(20, 1, 40));
   // we generate a trajectory to reach this goal pose with respect to our cost functions
   base_local_planner::Trajectory result;
   trajectory_generator_.generateTrajectory(pos, vel, vel_samples, result);
@@ -53,6 +51,53 @@ bool BAUPlanner::validate(Eigen::Vector3f pos, Eigen::Vector3f vel, Eigen::Vecto
   }
   return true;
 }
+
+void BAUPlanner::update(const geometry_msgs::PoseStamped &robot_pose,
+                        const std::vector<geometry_msgs::Point> &robot_footprint,
+                        const std::vector<geometry_msgs::PoseStamped> &local_plan) {
+  // first get rid of whatever plan we're currently following
+  cur_plan_.clear();
+  oscillation_costs_.resetOscillationFlags();
+  // our new plan is the plan we've just received
+  cur_plan_ = local_plan;
+  obstacle_costs_.setFootprint(robot_footprint);
+  path_costs_.setTargetPoses(cur_plan_);
+  goal_costs_.setTargetPoses(cur_plan_);
+  alignment_costs_.setTargetPoses(cur_plan_);
+
+  geometry_msgs::PoseStamped goal_pose = cur_plan_.back();
+  std::vector<geometry_msgs::PoseStamped> front_cur_plan = cur_plan_;
+
+  // this idea/these next few lines of code shamelessly copied from the auckbot local planner:
+  // https://github.com/ct2034/auckbot/tree/master/edwa_local_planner
+  // the idea being to ensure that the point defined by the x_shift_distance_ is correctly oriented with
+  // the current goal, rather than being a static offset of the robot's x-position
+  // if we don't do this, movement is super unstable and weird, as the x_shift_distance_ will often
+  // face in the wrong direction, and pull the robot away from the goal!
+  double angle_to_goal = atan2(goal_pose.pose.position.y - robot_pose.pose.position.x,
+                               goal_pose.pose.position.x - robot_pose.pose.position.y);
+  front_cur_plan.back().pose.position.x =
+      front_cur_plan.back().pose.position.x + x_shift_distance_ * cos(angle_to_goal);
+  front_cur_plan.back().pose.position.y =
+      front_cur_plan.back().pose.position.y + x_shift_distance_ * sin(angle_to_goal);
+  goal_facing_costs_.setTargetPoses(front_cur_plan);
+
+  double sq_dist = (robot_pose.pose.position.x - goal_pose.pose.position.x) *
+                       (robot_pose.pose.position.x - goal_pose.pose.position.x) +
+                   (robot_pose.pose.position.y - goal_pose.pose.position.y) *
+                       (robot_pose.pose.position.y - goal_pose.pose.position.y);
+  float path_dist_bias = planner_util_->getCostmap()->getResolution() * path_scale_bias_;
+  if (sq_dist > x_shift_distance_ * x_shift_distance_) {
+    double resolution = planner_util_->getCostmap()->getResolution();
+    alignment_costs_.setScale(path_dist_bias);
+    alignment_costs_.setTargetPoses(cur_plan_);
+  } else {
+    alignment_costs_.setScale(0.0);
+  }
+  // end
+}
+
+void BAUPlanner::reset() { oscillation_costs_.resetOscillationFlags(); }
 
 void BAUPlanner::setUpCostFunctions() {
   // empty the current set of cost functions, in case we've toggled some at runtime
@@ -78,17 +123,17 @@ void BAUPlanner::setUpCostFunctions() {
   alignment_costs_.setXShift(x_shift_distance_);
 
   oscillation_costs_.resetOscillationFlags();
-  obstacle_costs_.setSumScores(true);
+  obstacle_costs_.setSumScores(false);
   oscillation_costs_.setOscillationResetDist(0.05, 0.2);
 
   // set up the ones we have active for this planning tick
   // TODO: could add the option to enable/disable certain cost functions at runtime here
-  cost_functions_.push_back(&oscillation_costs_);
-  cost_functions_.push_back(&obstacle_costs_);
+  //  cost_functions_.push_back(&oscillation_costs_);
+  //  cost_functions_.push_back(&obstacle_costs_);
   cost_functions_.push_back(&path_costs_);
-  cost_functions_.push_back(&goal_costs_);
-  cost_functions_.push_back(&goal_facing_costs_);
-  cost_functions_.push_back(&alignment_costs_);
+  //  cost_functions_.push_back(&goal_costs_);
+  //  cost_functions_.push_back(&goal_facing_costs_);  // still overshoots with this off
+  //  cost_functions_.push_back(&alignment_costs_);    // overshoots with this off
 }
 
 base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped &robot_pose,
@@ -96,32 +141,7 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
                                                 const std::vector<geometry_msgs::Point> &robot_footprint,
                                                 const std::vector<geometry_msgs::PoseStamped> &local_plan,
                                                 geometry_msgs::PoseStamped &cmd_vel) {
-  // first get rid of whatever plan we're currently following
-  cur_plan_.clear();
-  // our new plan is the plan we've just received
-  cur_plan_ = local_plan;
   // new plan might have a new end goal, so we need to set up our cost functions with any new data that came in
-  obstacle_costs_.setFootprint(robot_footprint);
-  path_costs_.setTargetPoses(cur_plan_);
-  goal_costs_.setTargetPoses(cur_plan_);
-  alignment_costs_.setTargetPoses(cur_plan_);
-
-  geometry_msgs::PoseStamped goal_pose = cur_plan_.back();
-  Eigen::Vector3f pos(robot_pose.pose.position.x, robot_pose.pose.position.y, tf2::getYaw(robot_pose.pose.orientation));
-  std::vector<geometry_msgs::PoseStamped> front_cur_plan = cur_plan_;
-
-  // this idea/these next 4 lines of code shamelessly copied from the auckbot local planner:
-  // https://github.com/ct2034/auckbot/tree/master/edwa_local_planner
-  // the idea being to ensure that the point defined by the x_shift_distance_ is correctly oriented with
-  // the current goal, rather than being a static offset of the robot's x-position
-  // if we don't do this, movement is super unstable and weird, as the x_shift_distance_ will often
-  // face in the wrong direction, and pull the robot away from the goal!
-  double angle_to_goal = atan2(goal_pose.pose.position.y - pos[1], goal_pose.pose.position.x - pos[0]);
-  front_cur_plan.back().pose.position.x =
-      front_cur_plan.back().pose.position.x + x_shift_distance_ * cos(angle_to_goal);
-  front_cur_plan.back().pose.position.y =
-      front_cur_plan.back().pose.position.y + x_shift_distance_ * sin(angle_to_goal);
-  goal_facing_costs_.setTargetPoses(front_cur_plan);
 
   // begin planning loop here -- first initialise the trajectory generator
   // requires everything in Eigen format for some reason ¯\_(ツ)_/¯
@@ -133,8 +153,8 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
       Eigen::Vector3f(cur_plan_.back().pose.position.x, cur_plan_.back().pose.position.y,
                       tf2::getYaw(cur_plan_.back().pose.orientation)),
       &limits,
-      Eigen::Vector3f(num_sampled_trajectories_, num_sampled_trajectories_,
-                      num_sampled_trajectories_));  // TODO: Make sampling sizes editable
+      Eigen::Vector3f(20, 1,
+                      40));  // TODO: Make sampling sizes editable
   // stores the best-scoring output of trajectory search
   // first initialise a blank trajectory
   base_local_planner::Trajectory result;
@@ -148,6 +168,12 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
   scored_sampling_planner_.findBestTrajectory(result, &all_explored);
   ROS_INFO("explored %d trajectories", (int)all_explored.size());
   ROS_INFO("final result cost: %f", result.cost_);
+
+  // update this cost function with information about the new trajectory, useful to give
+  // a smoother transition on the next iteration
+  oscillation_costs_.updateOscillationFlags(
+      Eigen::Vector3f(robot_pose.pose.position.x, robot_pose.pose.position.y, tf2::getYaw(robot_pose.pose.orientation)),
+      &result, planner_util_->getCurrentLimits().min_vel_trans);
 
   // if the cost is < 0 (set above to -1) the generator didn't find a usable trajectory
   // so the best thing to do is stop the robot, so report back 0 velocities in all dimensions
@@ -172,12 +198,6 @@ base_local_planner::Trajectory BAUPlanner::plan(const geometry_msgs::PoseStamped
     q.setRPY(0, 0, result.thetav_);
     tf2::convert(q, cmd_vel.pose.orientation);
   }
-
-  // update this cost function with information about the new trajectory, useful to give
-  // a smoother transition on the next iteration
-  oscillation_costs_.updateOscillationFlags(
-      Eigen::Vector3f(robot_pose.pose.position.x, robot_pose.pose.position.y, tf2::getYaw(robot_pose.pose.orientation)),
-      &result, planner_util_->getCurrentLimits().min_vel_trans);
 
   return result;
 }

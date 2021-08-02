@@ -41,12 +41,12 @@ void BAUPlannerROS::initialize(const std::string name, tf2_ros::Buffer *tf, cost
   limits.acc_lim_x = 2.5;
   limits.acc_lim_y = 0.0;
   limits.acc_lim_theta = 3.2;
-  limits.acc_lim_trans = 0.0;
+  limits.acc_lim_trans = 0.1;
   limits.xy_goal_tolerance = 0.05;
   limits.yaw_goal_tolerance = 0.17;
   limits.prune_plan = true;
-  limits.trans_stopped_vel = 10.0;
-  limits.theta_stopped_vel = 10.0;
+  limits.trans_stopped_vel = 0.11;
+  limits.theta_stopped_vel = 1.37;
   planner_util_.reconfigureCB(limits, false);
 
   bau_planner_ = std::make_shared<BAUPlanner>(&planner_util_);
@@ -91,10 +91,10 @@ bool BAUPlannerROS::setPlan(const std::vector<geometry_msgs::PoseStamped> &orig_
     ROS_ERROR("BAUPlanner is not yet initialized.");
     return false;
   }
-  ROS_INFO("Received new global plan.");
+  ROS_INFO("Received new global plan. Resetting tools");
   // reset this controller as it is stateful, and the goal now may have changed
   latched_sr_controller_.resetLatching();
-
+  bau_planner_->reset();
   return planner_util_.setPlan(orig_global_plan);
 }
 
@@ -133,9 +133,13 @@ bool BAUPlannerROS::computeVelocityCommands(geometry_msgs::Twist &cmd_vel) {
   } else {
     ROS_INFO("Sucessfully received a new plan.");
   }
+
+  bau_planner_->update(cur_robot_pose_, costmap_->getRobotFootprint(), local_plan);
+
   if (latched_sr_controller_.isPositionReached(&planner_util_, cur_robot_pose_)) {
     // reach here if the x,y pos of the goal has been reached, but we still need to rotate
     // some in order to orient with it
+    ROS_INFO("USING SR CONTROLLER");
     bool latched_result = latched_sr_controller_.computeVelocityCommandsStopRotate(
         cmd_vel, planner_util_.getCurrentLimits().getAccLimits(),
         0.05,  // same val as in trajectory_generator_.setParameters call in BAUPlanner class

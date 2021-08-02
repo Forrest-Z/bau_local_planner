@@ -51,6 +51,11 @@ class BAUPlanner {
    */
   void setUpCostFunctions();
 
+  void update(const geometry_msgs::PoseStamped &robot_pose, const std::vector<geometry_msgs::Point> &robot_footprint,
+              const std::vector<geometry_msgs::PoseStamped> &local_plan);
+
+  void reset();
+
   /**
    * @brief Performs the actual local planning. Generates a set of local trajectories
    *        evaluates them according to the defined cost functions, and if a valid
